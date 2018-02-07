@@ -18,5 +18,5 @@ app.get('/restricted', passport.authenticate('accessToken', { session: false }),
     res.send("Yay, you successfully accessed the restricted resource!")
 })
 app.listen(1223, () =>{
-    console.log("Running on posrt 1223");
+    console.log("Running on port 1223");
 })
