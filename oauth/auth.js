@@ -50,7 +50,7 @@ passport.use("accessToken", new BearerStrategy(
             console.log(err, token);
             if (err) return done(err)
             if (!token) return done(null, false)
-            if (new Date() > token.expirationDate) {
+            if (new Date() > token.expirationdate) {
                 done(null, false)
             } else {
                 User.findOne({username: token.userid}, function (err, user) {
