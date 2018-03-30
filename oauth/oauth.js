@@ -18,28 +18,45 @@ server.exchange(oauth2orize.exchange.password((client, username, password, scope
             if(!res) return done(null, false);
             const token = utils.uid(256)
             const refreshToken = utils.uid(256)
-            const tokenHash = crypto.createHash('sha1').update(token).digest('hex')
-            const refreshTokenHash = crypto.createHash('sha1').update(refreshToken).digest('hex')
+            const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
+            const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex')
             
-            const expirationDate = new Date(new Date().getTime() + (3600 * 1000))// move this to some config file
+            const expirationDate = new Date(new Date().getTime() + (300 * 1000))// move this to some config file
 
-            AccessToken.findOneAndUpdate({userid:username}, 
-                {$set: {token: tokenHash, expirationdate:expirationDate, clientid: client.clientid, userid: username, scope:scope }},
-                {upsert:true},
+            // Delete the access tokens which have expired for this user
+            AccessToken.deleteMany(
+                { 
+                    $and :  [
+                                { "expirationdate" : { $lte : new Date() } },
+                                { "userid" : username }
+                            ]
+                },
                 function(err){
                     if(err) return done(err)
-                    RefreshToken.findOneAndUpdate({userid: username}, 
-                        {$set:{refreshtoken: refreshTokenHash, clientid: client.clientid, userid: username }}, 
-                        {upsert:true},
-                        function(err){
-                        if(err) return done(err)
-                        done(null, token, refreshToken, {expires_in: expirationDate})
-                    })
-                })
+            })
 
+            // Insert a new access token every time this user logs in
+            AccessToken.insertMany(
+            {
+                userid: username,
+                token: tokenHash,
+                expirationdate: expirationDate,
+                clientid: client.clientid,
+                scope: scope
+            },
+            function(err){
+                if(err) return done(err)
+                RefreshToken.findOneAndUpdate(
+                    {userid: username}, 
+                    {$set:{refreshtoken: refreshTokenHash, clientid: client.clientid, userid: username }}, 
+                    {upsert:true},
+                    function(err) {
+                    if(err) return done(err)
+                    done(null, token, refreshToken, {expires_in: expirationDate})
+                })
+            })
         })
-    })
-        
+    })        
 }))
 
 //Refresh Token
@@ -54,7 +71,7 @@ server.exchange(oauth2orize.exchange.refreshToken((client, refreshToken, scope, 
         const newAccessToken = utils.uid(256)
         const accessTokenHash = crypto.createHash('sha1').update(newAccessToken).digest('hex')
         
-        const expirationDate = new Date(new Date().getTime() + (3600 * 1000))
+        const expirationDate = new Date(new Date().getTime() + (300 * 1000))
     
         AccessToken.findOneAndUpdate({userid: token.userId}, {$set: {token: accessTokenHash, scope: scope, expirationdate: expirationDate}}, function (err) {
             if (err) return done(err)
