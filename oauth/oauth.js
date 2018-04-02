@@ -6,6 +6,13 @@ const utils = require("../utils");
 const User = require("../models/user");
 const AccessToken = require("../models/accesstoken");
 const RefreshToken = require("../models/refreshtoken");
+const redis = require('redis');
+const redisPort = process.env.redisPort;
+const rclient = redis.createClient(redisPort);
+
+rclient.on("error", function (err) {
+    console.log("Error " + err);
+});
 
 const server = oauth2orize.createServer();
 
@@ -37,24 +44,31 @@ server.exchange(oauth2orize.exchange.password((client, username, password, scope
 
             // Insert a new access token every time this user logs in
             AccessToken.insertMany(
-            {
-                userid: username,
-                token: tokenHash,
-                expirationdate: expirationDate,
-                clientid: client.clientid,
-                scope: scope
-            },
-            function(err){
-                if(err) return done(err)
-                RefreshToken.findOneAndUpdate(
-                    {userid: username}, 
-                    {$set:{refreshtoken: refreshTokenHash, clientid: client.clientid, userid: username }}, 
-                    {upsert:true},
-                    function(err) {
+                {
+                    userid: username,
+                    token: tokenHash,
+                    expirationdate: expirationDate,
+                    clientid: client.clientid,
+                    scope: scope
+                },
+                function(err){
                     if(err) return done(err)
-                    done(null, token, refreshToken, {expires_in: expirationDate})
-                })
             })
+            
+            RefreshToken.findOneAndUpdate(
+                { userid: username }, 
+                { $set: { refreshtoken: refreshTokenHash, clientid: client.clientid, userid: username } }, 
+                { upsert: true},
+                function(err) {
+                    if(err) return done(err)                    
+            })
+
+            // Set Redis cache
+            rclient.hset(tokenHash, "userid", username)
+            rclient.hset(tokenHash, "expirationdate", expirationDate.getTime())
+            rclient.expireat(tokenHash, Math.floor(expirationDate.getTime()/1000))
+
+            done(null, token, refreshToken, {expires_in: expirationDate})
         })
     })        
 }))

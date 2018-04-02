@@ -6,6 +6,13 @@ const crypto = require('crypto')
 const Client = require("../models/client")
 const AccessToken = require("../models/accesstoken");
 const User = require("../models/user")
+const redis = require('redis');
+const redisPort = process.env.redisPort;
+const rclient = redis.createClient(redisPort);
+
+rclient.on("error", function (err) {
+    console.log("Error " + err);
+});
 
 /**
  * These strategies are used to authenticate registered OAuth clients.
@@ -46,22 +53,22 @@ passport.use("accessToken", new BearerStrategy(
     function (accessToken, done) {
         console.log(accessToken);
         const accessTokenHash = crypto.createHash('sha256').update(accessToken).digest('hex')
-        AccessToken.findOne({token: accessTokenHash}, function (err, token) {
-            console.log(err, token);
-            if (err) return done(err)
-            if (!token) return done(null, false)
-            if (new Date() > token.expirationdate) {
+
+        // Check in redis cache
+        rclient.hgetall(accessTokenHash, function (err, obj) {            
+            console.log(obj);
+            if (obj == null){ 
+                console.log("Offo! Object is null");
+                return done(null, false)
+            }
+            if (new Date().getTime() > Number(obj.expirationdate)) {
+                console.log("Offo! time expired");
                 done(null, false)
             } else {
-                User.findOne({username: token.userid}, function (err, user) {
-                    if (err) return done(err)
-                    if (!user) return done(null, false)
-                    // no use of scopes for no
-                    var info = { scope: '*' }
-                    done(null, user, info);
-                })
+                // no use of scopes for no
+                var info = { scope: '*' }
+                done(null, obj.userid, info);
             }
-        })
-    }
-    
+        });        
+    }    
 ))
