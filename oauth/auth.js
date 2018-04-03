@@ -54,14 +54,33 @@ passport.use("accessToken", new BearerStrategy(
         console.log(accessToken);
         const accessTokenHash = crypto.createHash('sha256').update(accessToken).digest('hex')
 
-        // Check in redis cache
+        // First Check in redis cache
         rclient.hgetall(accessTokenHash, function (err, obj) {            
             console.log(obj);
             if (obj == null){ 
-                console.log("Offo! Object is null");
-                return done(null, false)
+                console.log("Offo! Object is null in Redis");
+
+                // Entry not found in redis cache
+                // Need to go to DB to find
+                AccessToken.findOne({token: accessTokenHash}, function (err, token) {
+                    if (err) return done(err)
+                    if (!token) return done(null, false)
+                    if (new Date() > token.expirationdate) {
+                        done(null, false)
+                    } else {
+                        User.findOne({username: token.userid}, function (err, user) {
+                            if (err) return done(err)
+                            if (!user) return done(null, false)
+                            // no use of scopes for no
+                            var info = { scope: '*' }
+                            done(null, user, info);
+                        })
+                    }
+                })                
             }
-            if (new Date().getTime() > Number(obj.expirationdate)) {
+            // Entry found in redis cache
+            // Check the expiration of the entry
+            else if (new Date().getTime() > Number(obj.expirationdate)) {
                 console.log("Offo! time expired");
                 done(null, false)
             } else {
