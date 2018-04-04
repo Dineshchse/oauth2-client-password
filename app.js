@@ -17,6 +17,10 @@ app.post("/oauth/token", oauth.token);
 app.get('/restricted', passport.authenticate('accessToken', { session: false }), function (req, res) {
     res.send("Yay, you successfully accessed the restricted resource!")
 })
+app.get('/logout', passport.authenticate('accessToken', { session: false }), function (req, res) {    
+    registration.revokeAccessToken(req, res);
+})
+
 app.listen(1223, () =>{
     console.log("Running on port 1223");
 })
